@@ -84,15 +84,19 @@ jobs:
           echo "OUT=${OUT}" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
+
       - name: Package
         run: |
-          cd dist
+          # Derive base names
           BASENAME="${{ env.BINARY_NAME }}-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          FILE="$(basename "$OUT")"  # e.g. lorem-v1.0.1-darwin-arm64[.exe]
+
+          # Make archives from inside ./dist
           if [ "${{ matrix.archive }}" = "zip" ]; then
-            zip -q "${BASENAME}.zip" "$(basename '${OUT}')"
+            (cd dist && zip -q "${BASENAME}.zip" "$FILE")
             echo "ARCHIVE=dist/${BASENAME}.zip" >> $GITHUB_ENV
           else
-            tar -czf "${BASENAME}.tar.gz" "$(basename '${OUT}')"
+            (cd dist && tar -czf "${BASENAME}.tar.gz" "$FILE")
             echo "ARCHIVE=dist/${BASENAME}.tar.gz" >> $GITHUB_ENV
           fi
 
