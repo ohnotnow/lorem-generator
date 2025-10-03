@@ -10,7 +10,7 @@ permissions:
 
 env:
   BINARY_NAME: lorem
-  MAIN_PKG: ./cmd/lorem
+  MAIN_PKG: ./
   CGO_ENABLED: 0
 
 jobs:
