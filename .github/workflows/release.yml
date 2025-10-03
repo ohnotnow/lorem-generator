@@ -1,0 +1,106 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'   # runs only when pushing tags like v1.0.0, v2.3.4, etc.
+
+permissions:
+  contents: write  # needed to create and upload Releases
+
+env:
+  BINARY_NAME: lorem
+  MAIN_PKG: ./cmd/lorem
+  CGO_ENABLED: 0
+
+jobs:
+  # Create (or reuse) the release for this tag
+  create_release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          # allow subsequent jobs to upload files to the same release
+          append_body: true
+
+  # Build for the matrix of OS/ARCH and upload assets
+  build_and_upload:
+    needs: create_release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - goos: linux   # x86_64
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: linux   # ARM64
+            goarch: arm64
+            ext: ""
+            archive: tar.gz
+
+          # macOS (Apple Silicon)
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+            archive: tar.gz
+
+          # Windows
+          - goos: windows
+            goarch: amd64
+            ext: ".exe"
+            archive: zip
+          - goos: windows
+            goarch: arm64
+            ext: ".exe"
+            archive: zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: |
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME}"
+          OUT="dist/${{ env.BINARY_NAME }}-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          echo "Building ${OUT}"
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=${{ env.CGO_ENABLED }} \
+            go build -o "${OUT}" "${{ env.MAIN_PKG }}"
+          echo "OUT=${OUT}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Package
+        run: |
+          cd dist
+          BASENAME="${{ env.BINARY_NAME }}-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            zip -q "${BASENAME}.zip" "$(basename '${OUT}')"
+            echo "ARCHIVE=dist/${BASENAME}.zip" >> $GITHUB_ENV
+          else
+            tar -czf "${BASENAME}.tar.gz" "$(basename '${OUT}')"
+            echo "ARCHIVE=dist/${BASENAME}.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload asset to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ${{ env.ARCHIVE }}
+          fail_on_unmatched_files: true
+          append_body: true
+
